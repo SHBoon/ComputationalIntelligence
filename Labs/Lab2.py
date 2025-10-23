@@ -16,8 +16,8 @@ def perceptron(inputs_list, weights_list, bias):
    return output
 
 inputs = [[0, 0], [0, 1], [1, 0] ,[1, 1]]
-weights = [1, 1]
-bias = -1
+weights = [-1, -1]
+bias = 1.5
 
 fig = plt.figure()
 
@@ -29,8 +29,8 @@ for input_vector in inputs:
    elif result == 0:
       plt.scatter(input_vector[0], input_vector[1], s=50, color="red", zorder=3)
 
-plt.xlim(-0.5, 2)
-plt.ylim(-0.5, 2)
+plt.xlim(-0.5, 1.5)
+plt.ylim(-0.5, 1.5)
 
 x = np.array([-10, 10])
 y = (-weights[0]/weights[1]) * x - (bias/weights[1])
@@ -39,7 +39,7 @@ plt.plot(x, y, color="blue", zorder=2)
 
 plt.xlabel("Input 1")
 plt.ylabel("Input 2")
-plt.title("State Space of Input Vector")
+plt.title("State Space of Gate")
 
 plt.grid(True, linewidth=1, linestyle=':')
 
