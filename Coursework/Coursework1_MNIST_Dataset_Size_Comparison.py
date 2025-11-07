@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import time
-from Coursework1_MNIST_Handwriting import test_mnist_hw
+from Coursework1_MNIST_Fashion import test_fashion_mnist
 
 # List of training dataset sizes to test
 training_sizes = [100, 500, 1000, 5000, 10000, 30000, 60000]
@@ -13,7 +13,7 @@ times = []
 for training_size in training_sizes:
     # Measure the time taken for training and testing
     start_time = time.time()
-    scorecard = test_mnist_hw(training_length=training_size)
+    scorecard = test_fashion_mnist(training_length=training_size)
     end_time = time.time()
     
     # Calculate the elapsed time
