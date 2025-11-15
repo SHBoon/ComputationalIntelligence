@@ -54,7 +54,7 @@ def mutation(individual, mutation_rate, min_value, max_value, pop_range):
 
 # ---- New run_ga function ----
 def run_ga(mutation_rate, crossover_rate,
-           generations=200, population_size=50):
+           generations=20, population_size=50):
     min_value = 0
     max_value = 1000
     target = 550
@@ -66,7 +66,9 @@ def run_ga(mutation_rate, crossover_rate,
         if target in population:
             return gen
 
-        new_population = []
+        new_population = [1]
+      #   new_population[0] = (min(population, key=lambda ind: abs(ind - target)))
+
         for _ in range(population_size):
             parent1 = roulette_wheel_selection(population, target)
             parent2 = roulette_wheel_selection(population, target)
@@ -82,3 +84,8 @@ def run_ga(mutation_rate, crossover_rate,
         population = new_population
 
     return generations
+
+if __name__ == "__main__":
+    # Example run
+    gens = run_ga(mutation_rate=0.1, crossover_rate=0.7)
+    print(f"GA completed in {gens} generations.")

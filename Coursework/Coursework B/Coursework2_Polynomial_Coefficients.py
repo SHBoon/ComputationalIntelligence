@@ -49,8 +49,7 @@ def roulette_wheel_selection(population, target):
 def tournament_selection(population, target, k=10):
    competitors = random.sample(population, k)
    return min(competitors, key=lambda ind:
-      sum(abs(ind[i] - target[i]) for i in range(len(target)))
-   )
+      sum(abs(ind[i] - target[i]) for i in range(len(target))))
 
 def crossover(parent1, parent2):
    """
@@ -89,7 +88,9 @@ def run_ga(mutation_rate, crossover_rate,
       if target in population:
          return gen
 
-      new_population = []
+      new_population = [1]
+      new_population[0] = (min(population, key=lambda ind: 
+                              sum(abs(ind[i] - target[i]) for i in range(len(target)))))
 
       for _ in range(population_size):
          parent1 = roulette_wheel_selection(population, target)

@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-import Coursework2_Polynomial_Coefficients as GA_poly   # <-- YOUR FILE
-import Coursework2_Individual_Number as GA_ind  # <-- YOUR FILE
+import Coursework2_Polynomial_Coefficients as GA_poly
+import Coursework2_Individual_Number as GA_ind
 
 # ------------------------------------
 # Run GA once and return generations
 # ------------------------------------
 def run_once(mutation_rate, crossover_rate):
-   return GA_poly.run_ga(
+   return GA_ind.run_ga(
       mutation_rate=mutation_rate,
       crossover_rate=crossover_rate
    )
