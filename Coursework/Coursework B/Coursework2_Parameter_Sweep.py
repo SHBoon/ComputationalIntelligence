@@ -7,10 +7,12 @@ import Coursework2_Individual_Number as GA_ind
 # ------------------------------------
 # Run GA once and return generations
 # ------------------------------------
-def run_once(mutation_rate, crossover_rate):
+def run_once(mutation_rate, crossover_rate, population_size = 50, generations = 20):
    return GA_ind.run_ga(
       mutation_rate=mutation_rate,
-      crossover_rate=crossover_rate
+      crossover_rate=crossover_rate,
+      population_size = population_size,
+      generations = generations
    )
 
 # ------------------------------------
@@ -18,6 +20,9 @@ def run_once(mutation_rate, crossover_rate):
 # ------------------------------------
 mutation_values = np.linspace(0.01, 1.0, 20)  # 20 values from 0.01 to 1.00
 crossover_values = np.linspace(0.01, 1.0, 20)  # 20 values from 0.01 to 1.00
+
+population_size = 50
+generations = 20
 
 M_vals = []
 C_vals = []
@@ -29,9 +34,9 @@ G_vals = []
 for m in mutation_values:
    for c in crossover_values:
       gens = []
-      for iteration in range(10):
+      for iteration in range(50):
          print(f"Running Mutation {m:.2f}, Crossover {c:.2f}, Iteration {iteration+1}")
-         gens.append(run_once(m, c))
+         gens.append(run_once(m, c, population_size, generations))
       avg_gens = np.mean(gens)
 
       M_vals.append(m)
