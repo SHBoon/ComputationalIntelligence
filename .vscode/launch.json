@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Run CNN (TFEnv)",
+            "type": "debugpy",  // Changed from "debugpy" to "python"
+            "request": "launch",
+            "program": "/Users/sol/GitHub/ComputationalIntelligence/Coursework/Coursework C/CNN.py",
+            "console": "integratedTerminal",
+            "python": "/opt/anaconda3/envs/TFEnv/bin/python" 
+        },
+        {
+            "name": "Run Script B (Base Env)",
+            "type": "debugpy",  // Changed from "debugpy" to "python"
+            "request": "launch",
+            "program": "/Users/sol/GitHub/ComputationalIntelligence/Coursework/Coursework C/CourseworkC.py",
+            "console": "integratedTerminal",
+            "python": "/opt/anaconda3/envs/CompIntEnv/bin/python" 
+        }
+    ]
+}
