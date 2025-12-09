@@ -44,28 +44,38 @@ class SpikeCNN(nn.Module):
 
 from scipy.signal import find_peaks
 
-def detect_peaks(y, dataset = 'd1'):
+def detect_peaks(y, dataset = 'D1'):
+   threshold_coeffs = {
+      "D1": 8,
+      "D2": 6,
+      "D3": 5,
+      "D4": 4,
+      "D5": 3,
+      "D6": 2.5,
+   }
+
    noise = np.median(np.abs(y)) / 0.6745
-   threshold = 10 * noise
-   peaks, _ = find_peaks(y, height=threshold, distance=20)
+   y_abs = np.abs(y)
+   threshold = threshold_coeffs.get(dataset, 10) * noise
+   peaks, _ = find_peaks(y_abs, height=threshold, distance=2)
    return peaks
 
-def extract_wavelet_coeffs(window, wavelet='db4', level=3):
+def extract_wavelet_coeffs(window, wavelet='db4', level=5):
    coeffs = pywt.wavedec(window, wavelet, level=level)
    # Flatten all coefficients into one vector
    return np.concatenate(coeffs)
 
 def add_noise_for_dataset(data, version, Fs):
    noise_levels = {
-      "d1": 0.0,
-      "d2": 0.1,
-      "d3": 0.3,
-      "d4": 0.7,
-      "d5": 1.0,
-      "d6": 1.5,
+      "D1": 0.0,
+      "D2": 0.1,
+      "D3": 0.3,
+      "D4": 0.7,
+      "D5": 1.0,
+      "D6": 1.5,
    }
 
-   level = noise_levels.get(version.lower(), 0.0)
+   level = noise_levels.get(version, 0.0)
 
    if level == 0:
       return data  # no noise for D1
@@ -83,18 +93,17 @@ def add_noise_for_dataset(data, version, Fs):
    noisy = data + gaussian + 0.5 * level * coloured
    return noisy
 
-datasets = ('d1', 'd2', 'd3', 'd4', 'd5', 'd6')
+# datasets = ('d1', 'd2', 'd3', 'd4', 'd5', 'd6')
+datasets = ('D1',)
 
 for i, ds in enumerate(datasets, start=1):
-   print(f"Processing dataset {ds.upper()} ({i}/{len(datasets)})")
+   print(f"Processing dataset {ds} ({i}/{len(datasets)})")
    dataset = ds
 
    training_mat = spio.loadmat('Coursework/Coursework C/Coursework_C_Datasets/D1.mat', squeeze_me=True)
 
    # Import dataset
-   mat = spio.loadmat(f'Coursework/Coursework C/Coursework_C_Datasets/{dataset.upper()}.mat', squeeze_me=True)
-
-   Fs = 25000  # Sampling frequency (Hz)
+   mat = spio.loadmat(f'Coursework/Coursework C/Coursework_C_Datasets/{dataset}.mat', squeeze_me=True)
 
    training_data = add_noise_for_dataset(training_mat['d'], dataset, Fs)
    indexes = training_mat['Index']
@@ -140,12 +149,19 @@ for i, ds in enumerate(datasets, start=1):
       j = i + 1
 
       # Group peaks across templates
-      while j < len(all_peaks) and abs(all_peaks[j][0] - all_peaks[i][0]) < 5:
+      while j < len(all_peaks) and abs(all_peaks[j][0] - all_peaks[i][0]) < 2:
          group.append(all_peaks[j])
          j += 1
 
       # Choose strongest template’s peak
       best_peak = max(group, key=lambda x: filtered_outputs[x[1], x[0]])  
+
+      # Cross‑template consistency check
+      scores = np.array([filtered_outputs[t, best_peak[0]] for t in range(len(templates_raw))])
+      if np.max(scores) < 0.4 or np.sum(scores > 0.25) < 2:
+          i = j
+          continue
+
       merged.append(best_peak[0])
 
       i = j
@@ -156,7 +172,7 @@ for i, ds in enumerate(datasets, start=1):
    cleaned_spikes = []
    last_spike = -1e9
    for p in spike_times:
-      if p - last_spike > 30:
+      if p - last_spike > 20:
          cleaned_spikes.append(p)
          last_spike = p
    spike_times = np.array(cleaned_spikes)
@@ -169,6 +185,9 @@ for i, ds in enumerate(datasets, start=1):
    spike_windows = []
 
    for t in spike_times:
+      # Amplitude gate before window extraction
+      if np.max(np.abs(data[t-10:t+10])) < 3 * (np.median(np.abs(data)) / 0.6745):
+          continue
       # Reject spikes with too little amplitude
       if np.max(np.abs(data[t - window_pre:t + window_post])) < 4 * (np.median(np.abs(data)) / 0.6745):
          continue
@@ -238,6 +257,29 @@ for i, ds in enumerate(datasets, start=1):
          train_features.append(two_channel)
          train_labels.append(cls)
 
+   # Add noise samples as class 0
+   num_noise = len(train_features) // 2
+   for _ in range(num_noise):
+       i = np.random.randint(window_pre, N - window_post)
+       w = data[i-window_pre:i+window_post]
+
+       peak_idx = np.argmax(np.abs(w))
+       shift = window_pre - peak_idx
+       aligned = np.roll(w, shift)
+
+       aligned_norm = aligned - np.mean(aligned)
+       aligned_norm = aligned_norm / (np.max(np.abs(aligned_norm)) + 1e-8)
+
+       coeffs = extract_wavelet_coeffs(aligned_norm)
+       if len(coeffs) < window_size:
+           coeffs = np.pad(coeffs, (0, window_size - len(coeffs)))
+       else:
+           coeffs = coeffs[:window_size]
+
+       two_channel = np.stack((aligned_norm, coeffs), axis=0)
+       train_features.append(two_channel)
+       train_labels.append(6)
+
    train_x = torch.tensor(np.array(train_features), dtype=torch.float32)
    train_y = torch.tensor(np.array(train_labels) - 1, dtype=torch.long)
 
@@ -278,17 +320,17 @@ for i, ds in enumerate(datasets, start=1):
       confidence, raw_pred = torch.max(probs, dim=1)
       # Apply confidence threshold: classify as noise (0) if confidence < 0.7
       raw_pred = raw_pred + 1
-      pred_classes = torch.where(confidence > 0.7, raw_pred, torch.tensor(0))
+      pred_classes = torch.where(confidence > 0.995, raw_pred, torch.tensor(0))
       # pred_classes = torch.argmax(logits, dim=1).cpu().numpy() + 1  # Convert to 1–5
 
    Index_vec = spike_times
    Class_vec = pred_classes
 
-   # Save results# Save Index and Class predictions to a .mat file named for the dataset (e.g. D1.mat)
+   # Save results
    results_dir = 'Coursework/Coursework C/Coursework_C_Results'
    os.makedirs(results_dir, exist_ok=True)
 
-   dataset_name = ds.upper()  # 'D1', 'D2', ...
+   dataset_name = ds # 'D1', 'D2', ...
    save_path = os.path.join(results_dir, f'{dataset_name}.mat')
 
    # Convert Class_vec (torch tensor or tensor-like) and Index_vec to numpy arrays
@@ -311,3 +353,77 @@ for i, ds in enumerate(datasets, start=1):
 
    spio.savemat(save_path, {'Index': index_np, 'Class': class_np})
    print(f"Saved predictions to: {save_path}")
+
+   # Evaluation for D1
+   if ds == 'D1':
+      # Evaluation for D1
+      D1_indexes = np.asarray(mat['Index']).ravel()
+      D1_classes = np.asarray(mat['Class']).ravel()
+
+      D1_predictions = spio.loadmat(save_path, squeeze_me=True)
+      predicted_indexes = np.asarray(D1_predictions['Index']).ravel()
+      predicted_classes = np.asarray(D1_predictions['Class']).ravel()
+
+      print("D1 Assessment Results")
+      # Ground truth
+      GT_idx = D1_indexes
+      GT_cls = D1_classes
+
+      # Predictions
+      PR_idx = predicted_indexes
+      PR_cls = predicted_classes
+
+      tolerance = 50
+
+      TP = 0
+      FP = 0
+      FN = 0
+
+      # Per-class counts
+      TP_class = {c: 0 for c in range(1, 6)}
+      FP_class = {c: 0 for c in range(1, 6)}
+      FN_class = {c: 0 for c in range(1, 6)}
+
+      used_gt = set()
+
+      for p_idx, p_cls in zip(PR_idx, PR_cls):
+
+          # Compute abs difference to all GT spikes
+          diffs = np.abs(GT_idx - p_idx)
+          min_diff = np.min(diffs)
+          min_loc = np.argmin(diffs)
+
+          # If no GT spike within tolerance → FP
+          if min_diff > tolerance:
+              FP += 1
+              continue
+
+          # GT spike already matched by another prediction → FP
+          if min_loc in used_gt:
+              FP += 1
+              continue
+
+          # Check class match
+          if p_cls == GT_cls[min_loc]:
+              TP += 1
+              TP_class[p_cls] += 1
+              used_gt.add(min_loc)
+          else:
+              # Correct location but wrong class
+              FP += 1
+              if int(p_cls) in FP_class:
+                  FP_class[int(p_cls)] += 1
+
+      for i, cls in enumerate(GT_cls):
+          if i not in used_gt:
+              FN += 1
+              FN_class[cls] += 1
+
+      print("Detection Performance:")
+      print("TP:", TP)
+      print("FP:", FP)
+      print("FN:", FN)
+      print("Detection Recall:", TP / (TP + FN))
+      print("Detection Precision:", TP / (TP + FP))
+
+      print("\nClassification Accuracy on TP spikes:", TP / TP if TP > 0 else 0)
