@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # Load templates (assumes variable name is "templates" inside the .mat file)
 templates = np.load('Coursework/Coursework C/templates.npy', allow_pickle=True)
 
-templates = np.array([tmpl[:150] for tmpl in templates])
+templates = np.array([tmpl[:2000] for tmpl in templates])
 
 # Plot all templates
 plt.figure(figsize=(10, 6))
