@@ -9,7 +9,27 @@ import pywt
 from torch.utils.data import TensorDataset, DataLoader
 import os
 
-# Threshold tables for CNN confidence gating and MF peak detection
+# ==========================
+# Global Threshold Lookups
+# ==========================
+
+THRESHOLDS_PEAK = {
+   "D1": 6.0,
+   "D2": 4.0,
+   "D3": 2.5,
+   "D4": 1.5,
+   "D5": 1.0,
+   "D6": 0.7,
+}
+
+THRESHOLDS_MF = {
+   "D1": 0.03,
+   "D2": 0.04,
+   "D3": 0.05,
+   "D4": 0.06,
+   "D5": 0.07,
+   "D6": 0.08,
+}
 
 THRESHOLDS_CNN = {
    "base": {
@@ -30,38 +50,39 @@ THRESHOLDS_CNN = {
    }
 }
 
+# Per-class thresholds (optional, for advanced tuning):
 THRESHOLDS_CNN_CLASS = {
-    "base": {
-        "D1": {1: 0.65, 2: 0.65, 3: 0.60, 4: 0.40, 5: 0.65},
-        "D2": {1: 0.60, 2: 0.60, 3: 0.60, 4: 0.65, 5: 0.55},
-        "D3": {1: 0.50, 2: 0.55, 3: 0.60, 4: 0.60, 5: 0.30},
-        "D4": {1: 0.45, 2: 0.40, 3: 0.65, 4: 0.50, 5: 0.30},
-        "D5": {1: 0.40, 2: 0.30, 3: 0.70, 4: 0.45, 5: 0.15},
-        "D6": {1: 0.45, 2: 0.35, 3: 0.70, 4: 0.50, 5: 0.20},
-    }
+   "base": {
+      "D1": {1: 0.65, 2: 0.65, 3: 0.70, 4: 0.40, 5: 0.65},
+      "D2": {1: 0.60, 2: 0.60, 3: 0.80, 4: 0.65, 5: 0.55},
+      "D3": {1: 0.50, 2: 0.55, 3: 0.90, 4: 0.60, 5: 0.30},
+      "D4": {1: 0.45, 2: 0.40, 3: 0.90, 4: 0.50, 5: 0.30},
+      "D5": {1: 0.40, 2: 0.30, 3: 0.95, 4: 0.45, 5: 0.15},
+      "D6": {1: 0.45, 2: 0.35, 3: 0.90, 4: 0.50, 5: 0.20},
+   }
 }
 
 THRESHOLDS_MF_CLASS = {
-    "D1": {1: 0.03, 2: 0.03, 3: 0.03, 4: 0.03, 5: 0.03},
-    "D2": {1: 0.04, 2: 0.04, 3: 0.04, 4: 0.04, 5: 0.04},
-    "D3": {1: 0.05, 2: 0.05, 3: 0.08, 4: 0.05, 5: 0.05},
-    "D4": {1: 0.06, 2: 0.06, 3: 0.08, 4: 0.06, 5: 0.06},
-    "D5": {1: 0.07, 2: 0.07, 3: 0.09, 4: 0.07, 5: 0.07},
-    "D6": {1: 0.08, 2: 0.08, 3: 0.10, 4: 0.08, 5: 0.08},
+   "D1": {1: 0.03, 2: 0.03, 3: 0.03, 4: 0.03, 5: 0.03},
+   "D2": {1: 0.04, 2: 0.04, 3: 0.04, 4: 0.04, 5: 0.04},
+   "D3": {1: 0.05, 2: 0.05, 3: 0.08, 4: 0.05, 5: 0.05},
+   "D4": {1: 0.06, 2: 0.06, 3: 0.11, 4: 0.06, 5: 0.06},
+   "D5": {1: 0.07, 2: 0.07, 3: 0.12, 4: 0.07, 5: 0.07},
+   "D6": {1: 0.08, 2: 0.08, 3: 0.14, 4: 0.08, 5: 0.08},
 }
 
 THRESHOLDS_PEAK_CLASS = {
-    "D1": {1: 6.0, 2: 6.0, 3: 6.0, 4: 6.0, 5: 6.0},
-    "D2": {1: 5.0, 2: 5.0, 3: 5.0, 4: 5.0, 5: 5.0},
-    "D3": {1: 4.5, 2: 4.5, 3: 4.5, 4: 4.5, 5: 4.5},
-    "D4": {1: 4.0, 2: 4.0, 3: 4.0, 4: 4.0, 5: 4.0},
-    "D5": {1: 3.0, 2: 3.0, 3: 3.0, 4: 3.0, 5: 3.0},
-    "D6": {1: 2.0, 2: 2.0, 3: 2.0, 4: 2.0, 5: 2.0},
+   "D1": {1: 6.0, 2: 6.0, 3: 6.0, 4: 6.0, 5: 6.0},
+   "D2": {1: 5.0, 2: 5.0, 3: 5.0, 4: 5.0, 5: 5.0},
+   "D3": {1: 4.5, 2: 4.5, 3: 4.5, 4: 4.5, 5: 4.5},
+   "D4": {1: 4.0, 2: 4.0, 3: 4.0, 4: 4.0, 5: 4.0},
+   "D5": {1: 3.0, 2: 3.0, 3: 3.0, 4: 3.0, 5: 3.0},
+   "D6": {1: 2.0, 2: 2.0, 3: 2.0, 4: 2.0, 5: 2.0},
 }
 
 class SpikeCNN(nn.Module):
    """
-   One-dimensional, two-channel CNN for spike classification.
+   Simple 1D, 2-channel CNN for spike classification.
    """
    def __init__(self, num_classes=5, window_size=150):
       super(SpikeCNN, self).__init__()
@@ -95,8 +116,16 @@ class SpikeCNN(nn.Module):
       x = self.fc2(x)
       return x
    
-
-# Noise characteristics from dataset analysis
+def detect_peaks(y, dataset='D1', class_id=1):
+   """
+   Detect peaks in signal using per-dataset, per-class thresholds.
+   Returns array of peak indices.
+   """
+   noise = np.median(np.abs(y)) / 0.6745
+   y_abs = np.abs(y)
+   threshold = THRESHOLDS_PEAK_CLASS[dataset][class_id] * noise
+   peaks, _ = find_peaks(y_abs, height=threshold, distance=30)
+   return peaks
 
 # STD ratios from dataset analysis
 BASELINE_STD = 0.664
@@ -124,43 +153,29 @@ BAND_WEIGHTS = {
    "D6": (0.08, 0.24, 0.68),
 }
 
-def detect_peaks(data, dataset='D1', class_id=1):
-   """
-   Detect peaks in signal using per-dataset, per-class thresholds.
-   Returns array of peak indices.
-   """
-   # Define threshold based on MAD noise estimate
-   noise = np.median(np.abs(data)) / 0.6745
-   data_abs = np.abs(data)
-   threshold = THRESHOLDS_PEAK_CLASS[dataset][class_id] * noise
-
-   # Find peaks above threshold, spaced at least 30 samples apart
-   peaks, _ = find_peaks(data_abs, height=threshold, distance=30)
-   return peaks
-
-
 def add_noise_for_dataset(data, version, Fs):
    """
-   To train the CNN on clean D1 data, add noise
-   profiles matching each dataset D2..D6 based on 
-   dataset analysis.
+   Data-driven noise model:
+   - amplitude scaled using NOISE_STD_RATIO (from your analysis)
+   - frequency shape set by BAND_WEIGHTS (low/mid/high bands)
+   - slightly heavy-tailed noise for D2/D3 via Laplace mixing
    """
-   # No extra noise for clean D1
    if version == "D1":
-      return data  
+      return data  # no extra noise for clean D1
 
-   # Determine target noise std
-   base_sigma = 0.10
-
+   # 1) Decide overall target noise std relative to the signal
+   # Your spike snippets are usually normalised to ~1 peak,
+   # so we use a base sigma and scale by the dataset ratio.
+   base_sigma = 0.10  # tune this global knob if needed
    ratio = NOISE_STD_RATIO.get(version, 1.0)
    target_std = base_sigma * ratio
 
    N = len(data)
 
-   # Apply white noise
+   # 2) Start with white Gaussian noise (unit variance)
    white = np.random.normal(0.0, 1.0, size=N)
 
-   # Shape noise spectrum from BAND_WEIGHTS
+   # 3) Shape it in frequency to match band weights
    freqs = np.fft.rfftfreq(N, 1.0 / Fs)
    H = np.zeros_like(freqs)
 
@@ -168,12 +183,10 @@ def add_noise_for_dataset(data, version, Fs):
    f1, f2, f3, f4 = 0.0, 300.0, 3000.0, 10000.0
    w_low, w_mid, w_high = BAND_WEIGHTS.get(version, (0.4, 0.4, 0.2))
 
-   # Create band masks
    low_mask = (freqs >= f1) & (freqs < f2)
    mid_mask = (freqs >= f2) & (freqs < f3)
    high_mask = (freqs >= f3) & (freqs <= f4)
 
-   # Assign weights
    H[low_mask] = w_low
    H[mid_mask] = w_mid
    H[high_mask] = w_high
@@ -182,184 +195,155 @@ def add_noise_for_dataset(data, version, Fs):
    if np.all(H == 0):
       H += 1.0
 
-   # Random phases
+   # Random phases, magnitude = H
    phases = np.exp(1j * np.random.uniform(0, 2 * np.pi, size=len(freqs)))
    spectrum = H * phases
 
    coloured = np.fft.irfft(spectrum, n=N)
    coloured = coloured / (np.std(coloured) + 1e-12)
 
-   # Combine white and shaped noise
+   # 4) Combine white + coloured
    noise = 0.5 * white + 0.5 * coloured
 
-   # Scale to target std and add
+   # 5) D2/D3: add a tiny heavy-tailed component (Laplace) to bump kurtosis
+   if version in ("D2", "D3"):
+      lap = np.random.laplace(loc=0.0, scale=1.0, size=N)
+      lap = lap / (np.std(lap) + 1e-12)
+      noise = 0.8 * noise + 0.2 * lap
+
+   # 6) Scale to target std and add
    noise = noise / (np.std(noise) + 1e-12) * target_std
    return data + noise
 
-def build_templates_from_d1(data_clean, ground_truth_indexes, ground_truth_classes, window_pre=100, window_post=100):
-   
-   N = len(data_clean)
-   num_classes = 5
-   templates = []
+def build_templates_from_clean(data_clean, ground_truth_indexes, ground_truth_classes,
+                               window_pre=100, window_post=100):
+    N = len(data_clean)
+    num_classes = 5
+    templates = []
 
-   for cls in range(1, num_classes + 1):
-      # Pull out all ground-truth spike times belonging to this class
-      class_idxs = ground_truth_indexes[ground_truth_classes == cls]
-      spikes = []
+    for cls in range(1, num_classes + 1):
+        class_idxs = ground_truth_indexes[ground_truth_classes == cls]
+        spikes = []
 
-      for idx in class_idxs:
-         # Skip spikes too close to the start/end
-         if idx - window_pre >= 0 and idx + window_post < N:
+        for idx in class_idxs:
+            if idx - window_pre >= 0 and idx + window_post < N:
+                w = data_clean[idx - window_pre: idx + window_post]
 
-            # Extract window around the spike index
-            w = data_clean[idx - window_pre: idx + window_post]
+                peak_idx = np.argmax(np.abs(w))
+                shift = window_pre - peak_idx
+                aligned = np.roll(w, shift)
 
-            # Find strongest sample (peak by absolute magnitude)
-            peak_idx = np.argmax(np.abs(w))
+                aligned = aligned - np.mean(aligned)
+                aligned = aligned / (np.max(np.abs(aligned)) + 1e-12)
+                spikes.append(aligned)
 
-            # Shift so that peak sits exactly at middle
-            shift = window_pre - peak_idx
-            aligned = np.roll(w, shift)
+        spikes = np.array(spikes)
+        if spikes.size == 0:
+            templates.append(np.zeros(window_pre + window_post))
+            continue
 
-            # Remove DC offset in the window
-            aligned = aligned - np.mean(aligned)
+        peak_amplitudes = np.max(np.abs(spikes), axis=1)
+        top_indices = np.argsort(peak_amplitudes)[-30:]
+        template = np.mean(spikes[top_indices], axis=0)
 
-            # Scale to unit peak amplitude
-            aligned = aligned / (np.max(np.abs(aligned)) + 1e-12)
+        template = np.convolve(template, np.ones(5) / 5, mode='same')
+        templates.append(template)
 
-            spikes.append(aligned)
+    templates = np.array(templates)
 
-      spikes = np.array(spikes)
+    template_amplitudes = np.max(np.abs(templates), axis=1)
+    amp_norm = (template_amplitudes - np.min(template_amplitudes)) / (
+        np.max(template_amplitudes) - np.min(template_amplitudes) + 1e-12
+    )
 
-      if spikes.size == 0:
-         templates.append(np.zeros(window_pre + window_post))
-         continue
-
-      # Only use strongest spikes to reduce noise in template
-      peak_amplitudes = np.max(np.abs(spikes), axis=1)
-      top_indices = np.argsort(peak_amplitudes)[-60:]
-      template = np.mean(spikes[top_indices], axis=0)
-
-      # Smooth template slightly so MF correlation is less sensitive to tiny ripples
-      template = np.convolve(template, np.ones(5) / 5, mode='same')
-
-      templates.append(template)
-
-   templates = np.array(templates)
-
-   # Compute per-template peak amplitudes (used later to scale thresholds)
-   template_amplitudes = np.max(np.abs(templates), axis=1)
-
-   # Normalise amplitudes into [0,1] for convenient scaling of thresholds
-   amp_norm = (template_amplitudes - np.min(template_amplitudes)) / (np.max(template_amplitudes) - np.min(template_amplitudes) + 1e-12)
-
-   return templates, amp_norm
+    return templates, amp_norm
 
 
-def build_d1_training_set(data_clean, indexes, classes, Fs=25000, window_pre=100, window_post=100, fixed_noise_profile=None):
+def build_d1_training_set(data_clean, indexes, classes, Fs=25000, window_pre=100, window_post=100):
    """
-   Build training set (with known ground truths) from clean D1 data with augmentations.
+   Build training features/labels from *clean* D1, using a
+   two-channel (waveform + wavelet) representation and per-spike
+   augmentation with realistic dataset-level noise.
    """
    N = len(data_clean)
    train_features = []
    train_labels = []
 
    for idx, cls in zip(indexes, classes):
-      # Skip spikes too close to boundaries to extract full window
       if idx - window_pre < 0 or idx + window_post >= N:
          continue
 
-      # Extract spike window from clean D1
       w = data_clean[idx - window_pre: idx + window_post]
 
-      # Align each window so the strongest sample is at window_pre
+      # Align on peak
       peak_idx = np.argmax(np.abs(w))
       shift = window_pre - peak_idx
       aligned = np.roll(w, shift)
 
-      # Normalise: remove mean and scale to unit peak (shape-focused learning)
+      # Normalise waveform
       aligned_norm = aligned - np.mean(aligned)
       aligned_norm = aligned_norm / (np.max(np.abs(aligned_norm)) + 1e-8)
 
-      # Start augmentation from the aligned + normalised waveform
+      # --- Per-spike augmentation ---
+      # Start from the aligned, normalised waveform
       aug = aligned_norm.copy()
 
-      # Inject dataset-shaped noise so CNN generalises
-      if np.random.rand() < 0.8:
-         # If fixed_noise_profile is set, use that dataset's noise profile
-         if fixed_noise_profile is not None:
-            ds_choice = fixed_noise_profile
-         else:
-            # Fallback: mixed-noise training
-            ds_choice = np.random.choice(
-               ["D2", "D3", "D4", "D5", "D6"],
-               p=[0.25, 0.25, 0.20, 0.20, 0.10]
-            )
-
-         aug = add_noise_for_dataset(aug.copy(), ds_choice, Fs)
+      # With high probability, apply a realistic dataset-level noise profile
+      if np.random.rand() < 0.7:
+         # Choose a random "dataset" noise level (exclude D1 = clean)
+         ds_choice = np.random.choice(["D2", "D3", "D4", "D5"])
+         aug_noisy = add_noise_for_dataset(aug.copy(), ds_choice, Fs)
+         aug = aug_noisy
       else:
+         # Gaussian noise
          noise_std = 0.05
          aug += np.random.normal(0, noise_std, size=aug.shape)
 
-      # Random amplitude scaling (prevents model relying on absolute amplitude)
+      # Random amplitude scaling
       scale = 1.0 + 0.1 * (np.random.rand() - 0.5)
       aug *= scale
 
-      # Random small time shift (alignment jitter robustness)
+      # Random small time shift (±3 samples)
       shift_amount = np.random.randint(-3, 4)
       aug = np.roll(aug, shift_amount)
 
-      # Renormalise after augmentations
+      # Renormalise after all augmentations
       aug = aug - np.mean(aug)
       aug = aug / (np.max(np.abs(aug)) + 1e-8)
 
-      # Build wavelet-derived channel
+      # Wavelet channel
       cA, cD = pywt.dwt(aug, 'db4')
       wavelet_rec = pywt.idwt(cA, cD, 'db4')
       wavelet_rec = wavelet_rec[:len(aug)]
-
-      # Normalise wavelet channel to unit peak too
       wavelet_rec = wavelet_rec - np.mean(wavelet_rec)
       wavelet_rec = wavelet_rec / (np.max(np.abs(wavelet_rec)) + 1e-8)
 
-      # Stack two channels: (waveform, wavelet) -> shape (2, window_size)
       two_channel = np.stack([aug, wavelet_rec], axis=0)
-
       train_features.append(two_channel)
       train_labels.append(cls)
 
-   # Convert lists into tensors for PyTorch training
    train_x = torch.tensor(np.array(train_features), dtype=torch.float32)
-
-   # Convert labels for CrossEntropyLoss
    train_y = torch.tensor(np.array(train_labels) - 1, dtype=torch.long)
-
    return train_x, train_y
 
 
-def train_cnn(train_x, train_y, window_size=200, num_epochs=100):
+def train_cnn_on_d1(train_x, train_y, window_size=200, num_epochs=100):
+   """
+   Train SpikeCNN on the D1 training set.
+   """
    model = SpikeCNN(num_classes=5, window_size=window_size)
 
-   # Count class frequencies to build inverse-frequency weights
    class_counts = np.bincount(train_y.numpy())
-
-   # Higher weight for rarer classes (reduces majority-class bias)
    class_weights = 1.0 / (class_counts + 1e-6)
    class_weights = class_weights / np.sum(class_weights)
-
-   # Weighted CE loss (expects weights aligned with class index 0..4)
    criterion = nn.CrossEntropyLoss(
       weight=torch.tensor(class_weights, dtype=torch.float32)
    )
-
-   # Adam optimiser for fast convergence on small CNNs
    optimizer = torch.optim.Adam(model.parameters(), lr=2e-3)
 
-   # Wrap data in a loader for batching & shuffling
    dataset = TensorDataset(train_x, train_y)
    loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
-   # Batch training loop
    for epoch in range(num_epochs):
       model.train()
       epoch_loss = 0.0
@@ -377,43 +361,44 @@ def train_cnn(train_x, train_y, window_size=200, num_epochs=100):
    return model
 
 
-def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_classes, templates, amp_norm, Fs=25000, window_pre=100, window_post=100):
+def run_full_pipeline_on_data(data, ds_label, model, ground_truth_indexes, ground_truth_classes, templates, amp_norm, Fs=25000, window_pre=100, window_post=100):
+   """
+   Run the full MF + CNN pipeline on a dataset,
+   using a shared model, templates and thresholds.
+   """
    N = len(data)
 
-   # Build MF thresholds per class, scaled by template amplitude normalisation
-   mf_dynamic = np.array([THRESHOLDS_MF_CLASS[ds_label][cls] + 0.18 * amp_norm[cls - 1]for cls in range(1, 6)])
+   mf_dynamic = np.array([
+      THRESHOLDS_MF_CLASS[ds_label][cls] + 0.18 * amp_norm[cls - 1]
+      for cls in range(1, 6)
+   ])
 
-   # Store MF output per template (one stream per class template)
+   # Matched filtering
    filtered_outputs = []
 
-   # Convolve data with each class template (matched filter)
+   # Convolve data with each template
    for template in templates:
       # Normalise template
       template = template - np.mean(template)
       template = template / (np.max(np.abs(template)) + 1e-8)
-
-      # Matched filter = correlation with time-reversed template
+      # Convolve
       matched_filtered = fftconvolve(data, template[::-1], mode='same')
-
-      # Normalise MF output to unit peak (so thresholds are comparable)
       matched_filtered = matched_filtered / (np.max(np.abs(matched_filtered)) + 1e-12)
-
       filtered_outputs.append(matched_filtered)
 
    filtered_outputs = np.array(filtered_outputs)
 
-   # Detect candidate peaks in each MF stream using per-dataset/per-class thresholds
+   # Peak detection per template
    peak_lists = [
       detect_peaks(filtered_outputs[t], ds_label, t + 1)
       for t in range(len(filtered_outputs))
    ]
 
-   # Debug: show how many peaks each template produced
    print(f"[{ds_label}] Peak counts per template:")
    for t, peaks in enumerate(peak_lists):
       print(f"  Template {t+1}: {len(peaks)} peaks")
 
-   # Collect all peaks with their template ID to merge duplicates
+   # Merge peaks
    all_peaks = [(p, t) for t, peaks in enumerate(peak_lists) for p in peaks]
    all_peaks.sort()
 
@@ -421,25 +406,20 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
    i = 0
 
    while i < len(all_peaks):
-      # Start a group of peaks that are close in time (same underlying spike)
       group = [all_peaks[i]]
       j = i + 1
 
-      # Group peaks within 45 samples (tolerance for different templates firing)
+      # Group peaks within ±45 samples
       while j < len(all_peaks) and abs(all_peaks[j][0] - all_peaks[i][0]) < 45:
          group.append(all_peaks[j])
          j += 1
 
-      # Choose the peak whose MF response is strongest among the group
+      # Choose template with strongest MF response
       best_peak = max(group, key=lambda x: filtered_outputs[x[1], x[0]])
-
-      # Compute MF scores across *all* templates at that chosen time
       scores = np.array([filtered_outputs[t, best_peak[0]] for t in range(len(templates))])
 
-      # Apply dynamic threshold corresponding to the winning template/class
+      # Dynamic MF threshold based on template amplitude
       threshold_value = mf_dynamic[best_peak[1]]
-
-      # Only accept this time if max correlation is above threshold
       if np.max(scores) >= threshold_value:
          merged.append(best_peak[0])
 
@@ -447,12 +427,11 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
 
    spike_times = np.array(merged)
 
-   # Extract raw windows around each detected spike time
+   # Extract spike windows & CNN features
    spike_windows = []
    valid_spike_times = []
 
    for t in spike_times:
-      # Ensure the window fits fully inside the data
       if t - window_pre >= 0 and t + window_post < N:
          window = data[t - window_pre:t + window_post]
          spike_windows.append(window)
@@ -460,7 +439,7 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
 
    spike_times = np.array(valid_spike_times)
 
-   # Align each detected window on its own peak
+   # Align on peak
    spike_windows_aligned = []
    for window in spike_windows:
       peak_idx = np.argmax(np.abs(window))
@@ -470,17 +449,13 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
 
    spike_windows_aligned = np.array(spike_windows_aligned)
 
-   # Normalise each spike window to unit peak (per-spike normalisation)
-   spike_windows_normalised = spike_windows_aligned - np.mean(
-      spike_windows_aligned, axis=1, keepdims=True
-   )
-   spike_windows_normalised = spike_windows_normalised / np.max(
-      np.abs(spike_windows_normalised), axis=1, keepdims=True
-   )
+   # Normalise spikes
+   spike_windows_normalised = spike_windows_aligned - np.mean(spike_windows_aligned, axis=1, keepdims=True)
+   spike_windows_normalised = spike_windows_normalised / np.max(np.abs(spike_windows_normalised), axis=1, keepdims=True)
 
    print(f"[{ds_label}] Detected {len(spike_windows_normalised)} spikes after MF stage")
 
-   # Build the wavelet channel for each detected spike (CNN input channel 2)
+   # CNN second channel wavelets
    wavelet_channels = []
    for w in spike_windows_normalised:
       cA, cD = pywt.dwt(w, 'db4')
@@ -491,40 +466,33 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
       wavelet_channels.append(wavelet_rec)
 
    wavelet_channels = np.array(wavelet_channels)
-
-   # Stack both channels into shape (N_spikes, 2, window_size)
    combined_inputs = np.stack([spike_windows_normalised, wavelet_channels], axis=1)
    spike_windows_tensor = torch.tensor(combined_inputs, dtype=torch.float32)
 
-   # Run CNN inference
+   # CNN inference and confidence thresholding
    model.eval()
    with torch.no_grad():
       logits = model(spike_windows_tensor)
       probs = F.softmax(logits, dim=1)
       conf, preds = torch.max(probs, dim=1)
 
-   # Build per-class confidence thresholds for this dataset
-   cnn_thresholds_np = np.array([
-      THRESHOLDS_CNN_CLASS["base"][ds_label][cls]
-      + THRESHOLDS_CNN["scale"][ds_label] * amp_norm[cls - 1]
-      for cls in range(1, 6)
-   ])
+   print(f"[{ds_label}] CNN raw predictions (1..5):", np.bincount(preds.cpu().numpy() + 1, minlength=6)[1:])
+
+   # Per-class CNN thresholds for this noise profile
+   cnn_thresholds_np = np.array([THRESHOLDS_CNN_CLASS["base"][ds_label][cls] +THRESHOLDS_CNN["scale"][ds_label] * amp_norm[cls - 1]for cls in range(1, 6)])
    cnn_thresholds = torch.tensor(cnn_thresholds_np, dtype=torch.float32)
 
-   # Keep only predictions whose confidence exceeds the threshold for that class
    mask = conf >= cnn_thresholds[preds]
 
-   # Final outputs
    Index_vec = spike_times[mask.cpu().numpy()]
    Class_vec = (preds[mask].cpu().numpy() + 1)
 
-   # Debugging: Show how many survive gating per class
    print(f"[{ds_label}] Spike counts per class (after gating):")
    for c in range(1, 6):
       count_c = int(np.sum(Class_vec == c))
       print(f"  Class {c}: {count_c} spikes")
 
-   # Only evaluate vs GT when running on D1 (where GT exists)
+   # Evaluation vs D1 ground truths (for analysis)
    if ds_label == 'D1':
       ground_truth_indexes = ground_truth_indexes.ravel()
       ground_truth_classes = ground_truth_classes.ravel()
@@ -537,30 +505,25 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
       FP = 0
       FN = 0
 
-      # Per-class bookkeeping (useful for debugging class failure modes)
       TP_class = {c: 0 for c in range(1, 6)}
       FP_class = {c: 0 for c in range(1, 6)}
       FN_class = {c: 0 for c in range(1, 6)}
 
       used_gt = set()
 
-      # Match each predicted spike to the closest ground-truth spike
       for p_idx, p_cls in zip(PR_idx, PR_cls):
          diffs = np.abs(ground_truth_indexes - p_idx)
          min_diff = np.min(diffs)
          min_loc = np.argmin(diffs)
 
-         # Too far from any GT spike -> false positive
          if min_diff > tolerance:
             FP += 1
             continue
 
-         # GT spike already claimed by another prediction -> count as FP (duplicate)
          if min_loc in used_gt:
             FP += 1
             continue
 
-         # If class matches, count TP; otherwise count as FP (wrong class)
          if p_cls == ground_truth_classes[min_loc]:
             TP += 1
             TP_class[int(p_cls)] += 1
@@ -569,7 +532,6 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
             FP += 1
             FP_class[int(p_cls)] += 1
 
-      # Any GT spikes not matched by a correct prediction are false negatives
       for i, cls in enumerate(ground_truth_classes):
          if i not in used_gt:
             FN += 1
@@ -592,7 +554,10 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
          fn_c = FN_class[c]
          recall_c = tp_c / (tp_c + fn_c) if (tp_c + fn_c) > 0 else 0.0
          precision_c = tp_c / (tp_c + fp_c) if (tp_c + fp_c) > 0 else 0.0
-         print(f"  Class {c}: TP={tp_c}, FP={fp_c}, FN={fn_c}, "f"Recall={recall_c:.4f}, Precision={precision_c:.4f}")
+         print(
+            f"  Class {c}: TP={tp_c}, FP={fp_c}, FN={fn_c}, "
+            f"Recall={recall_c:.4f}, Precision={precision_c:.4f}"
+         )
 
       metrics = {
          "TP": TP,
@@ -606,83 +571,66 @@ def analyse_dataset(data, ds_label, model, ground_truth_indexes, ground_truth_cl
       }
 
       return Index_vec, Class_vec, metrics
-
+   
    else:
       return Index_vec, Class_vec
 
-
-# Dataset labels (used for iterating over files and per-dataset thresholds)
 datasets = ('D1', 'D2', 'D3', 'D4', 'D5', 'D6')
 
-# Global signal parameters
-Fs = 25000
+# Shared parameters
+Fs = 25000  # Sampling frequency (Hz)
 window_pre = 100
 window_post = 100
 window_size = window_pre + window_post
 
-
-# Load clean D1 (Index/Class) for training and templates
+# --------------------------------------------------------------
+# 0) Load clean D1 + ground truth for training/templates
+# --------------------------------------------------------------
 training_dataset = spio.loadmat('Coursework/Coursework C/Coursework_C_Datasets/D1.mat', squeeze_me=True)
 
 data_clean = training_dataset['d']
 ground_truth_indexes = np.asarray(training_dataset['Index']).ravel()
 ground_truth_classes = np.asarray(training_dataset['Class']).ravel()
 
-# Sort spikes by time (helps later matching and sanity checks)
+# Sort GT spikes by index
 order = np.argsort(ground_truth_indexes)
 ground_truth_indexes = ground_truth_indexes[order]
 ground_truth_classes = ground_truth_classes[order]
 
+# --------------------------------------------------------------
+# 1) Build training set on *clean* D1 and train shared CNN
+# --------------------------------------------------------------
+train_x, train_y = build_d1_training_set(data_clean, ground_truth_indexes, ground_truth_classes, Fs=Fs, window_pre=window_pre, window_post=window_post)
 
-# Train one CNN per dataset noise profile
-models = {}
+print(f"Training set: {train_x.shape[0]} spikes, "
+      f"{train_x.shape[2]} samples per channel")
 
-for ds in datasets:
-   print(f"Training CNN for {ds} noise profile")
+model = train_cnn_on_d1(train_x, train_y, window_size=window_size, num_epochs=100)
 
-   # For D1, train without forcing a dataset noise profile
-   fixed_profile = None if ds == "D1" else ds
+# --------------------------------------------------------------
+# 2) Build templates and amp_norm from clean D1
+# --------------------------------------------------------------
+templates, amp_norm = build_templates_from_clean(data_clean, ground_truth_indexes, ground_truth_classes, window_pre=window_pre, window_post=window_post)
 
-   train_x, train_y = build_d1_training_set(
-      data_clean, ground_truth_indexes, ground_truth_classes,
-      Fs=Fs, window_pre=window_pre, window_post=window_post,
-      fixed_noise_profile=fixed_profile
-   )
-
-   print(f"[{ds}] Training set: {train_x.shape[0]} spikes, "f"{train_x.shape[2]} samples per channel")
-
-   # Train CNN
-   models[ds] = train_cnn(
-      train_x, train_y,
-      window_size=window_size,
-      num_epochs=60
-   )
-
-# Build class templates for matched filtering (from clean D1)
-templates, amp_norm = build_templates_from_d1(
-   data_clean, ground_truth_indexes, ground_truth_classes,
-   window_pre=window_pre, window_post=window_post
-)
-
-# Run pipeline on each dataset and save predictions as .mat
+# --------------------------------------------------------------
+# 3) Process each dataset D1..D6 and save results
+# --------------------------------------------------------------
 results_dir = 'Coursework/Coursework C/Coursework_C_Results'
 os.makedirs(results_dir, exist_ok=True)
 
 for i, ds in enumerate(datasets, start=1):
-   model_ds = models[ds]
-
+   print("\n" + "=" * 70)
    print(f"Processing dataset {ds} ({i}/{len(datasets)})")
+   print("=" * 70)
 
-   # Load dataset signal from .mat
    data_mat = spio.loadmat(f'Coursework/Coursework C/Coursework_C_Datasets/{ds}.mat', squeeze_me=True)
    data = data_mat['d']
 
-   # For D1, also return metrics (since GT exists) to assess performance
    if ds == 'D1':
-      Index_vec, Class_vec, metrics = analyse_dataset(
+      Index_vec, Class_vec, metrics = run_full_pipeline_on_data(
          data,
          ds_label=ds,
-         model=model_ds,
+         model=model,
          ground_truth_indexes=ground_truth_indexes,
          ground_truth_classes=ground_truth_classes,
          templates=templates,
@@ -692,10 +640,10 @@ for i, ds in enumerate(datasets, start=1):
          window_post=window_post
       )
    else:
-      Index_vec, Class_vec = analyse_dataset(
+      Index_vec, Class_vec = run_full_pipeline_on_data(
          data,
          ds_label=ds,
-         model=model_ds,
+         model=model,
          ground_truth_indexes=ground_truth_indexes,
          ground_truth_classes=ground_truth_classes,
          templates=templates,
@@ -705,11 +653,17 @@ for i, ds in enumerate(datasets, start=1):
          window_post=window_post
       )
 
-   # Convert to numpy arrays for saving (savemat expects arrays)
+   # Convert to numpy arrays
    class_np = np.asarray(Class_vec)
    index_np = np.asarray(Index_vec)
 
-   # Save output file in required format: {Index, Class}
+   # Print how many spikes per class are being saved
+   print(f"Spike counts per class for dataset {ds}:")
+   for c in range(1, 6):
+      count_c = int(np.sum(class_np == c))
+      print(f"  Class {c}: {count_c} spikes")
+
+   # Save .mat for this dataset
    save_path = os.path.join(results_dir, f'{ds}.mat')
    spio.savemat(save_path, {'Index': index_np, 'Class': class_np})
    print(f"Saved predictions to: {save_path}")

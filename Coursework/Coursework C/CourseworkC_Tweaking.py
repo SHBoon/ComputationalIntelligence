@@ -40,6 +40,7 @@ def build_templates_from_clean(data_clean, GT_idx, GT_cls,
    )
 
    return templates, amp_norm
+
 import numpy as np
 import torch
 import scipy.io as spio
@@ -49,6 +50,7 @@ from scipy.signal import fftconvolve, find_peaks
 import pywt
 from torch.utils.data import TensorDataset, DataLoader
 import os
+import copy
 
 # ==========================
 # Global Threshold Lookups
@@ -97,9 +99,9 @@ THRESHOLDS_CNN_CLASS = {
         "D1": {1: 0.65, 2: 0.65, 3: 0.70, 4: 0.40, 5: 0.65},
         "D2": {1: 0.60, 2: 0.60, 3: 0.80, 4: 0.65, 5: 0.55},
         "D3": {1: 0.50, 2: 0.55, 3: 0.90, 4: 0.60, 5: 0.30},
-        "D4": {1: 0.45, 2: 0.40, 3: 0.90, 4: 0.50, 5: 0.30},
-        "D5": {1: 0.40, 2: 0.30, 3: 0.95, 4: 0.45, 5: 0.15},
-        "D6": {1: 0.45, 2: 0.35, 3: 0.90, 4: 0.50, 5: 0.20},
+        "D4": {1: 0.45, 2: 0.40, 3: 0.65, 4: 0.50, 5: 0.30},
+        "D5": {1: 0.40, 2: 0.30, 3: 0.70, 4: 0.45, 5: 0.15},
+        "D6": {1: 0.45, 2: 0.35, 3: 0.70, 4: 0.50, 5: 0.20},
     }
 }
 
@@ -107,9 +109,9 @@ THRESHOLDS_MF_CLASS = {
     "D1": {1: 0.03, 2: 0.03, 3: 0.03, 4: 0.03, 5: 0.03},
     "D2": {1: 0.04, 2: 0.04, 3: 0.04, 4: 0.04, 5: 0.04},
     "D3": {1: 0.05, 2: 0.05, 3: 0.08, 4: 0.05, 5: 0.05},
-    "D4": {1: 0.06, 2: 0.06, 3: 0.11, 4: 0.06, 5: 0.06},
-    "D5": {1: 0.07, 2: 0.07, 3: 0.12, 4: 0.07, 5: 0.07},
-    "D6": {1: 0.08, 2: 0.08, 3: 0.14, 4: 0.08, 5: 0.08},
+    "D4": {1: 0.06, 2: 0.06, 3: 0.08, 4: 0.06, 5: 0.06},
+    "D5": {1: 0.07, 2: 0.07, 3: 0.09, 4: 0.07, 5: 0.07},
+    "D6": {1: 0.08, 2: 0.08, 3: 0.10, 4: 0.08, 5: 0.08},
 }
 
 THRESHOLDS_PEAK_CLASS = {
@@ -258,7 +260,8 @@ def add_noise_for_dataset(data, version, Fs):
    return data + noise
 
 def build_d1_training_set(data_clean, indexes, classes,
-                        Fs=25000, window_pre=100, window_post=100):
+                        Fs=25000, window_pre=100, window_post=100,
+                        fixed_noise_profile=None):
    """
    Build training features/labels from *clean* D1, using your
    two-channel (waveform + wavelet) representation and per-spike
@@ -291,12 +294,19 @@ def build_d1_training_set(data_clean, indexes, classes,
       # using the same add_noise_for_dataset mapping as inference.
       # Otherwise, fall back to small Gaussian + scaling + shift only.
       if np.random.rand() < 0.7:
-         # Choose a random "dataset" noise level (exclude D1 = clean)
-         ds_choice = np.random.choice(["D2", "D3", "D4", "D5"])
-         aug_noisy = add_noise_for_dataset(aug.copy(), ds_choice, Fs)
-         aug = aug_noisy
+   # If fixed_noise_profile is set, always augment with that dataset's noise
+         if fixed_noise_profile is not None:
+            ds_choice = fixed_noise_profile
+         else:
+            # Mixed-noise fallback (useful for base training)
+            ds_choice = np.random.choice(
+               ["D2", "D3", "D4", "D5", "D6"],
+               p=[0.25, 0.25, 0.20, 0.20, 0.10]
+            )
+
+         aug = add_noise_for_dataset(aug.copy(), ds_choice, Fs)
       else:
-         # Gaussian noise
+         # Gaussian fallback
          noise_std = 0.05
          aug += np.random.normal(0, noise_std, size=aug.shape)
 
@@ -327,6 +337,33 @@ def build_d1_training_set(data_clean, indexes, classes,
    train_y = torch.tensor(np.array(train_labels) - 1, dtype=torch.long)
    return train_x, train_y
 
+def fine_tune_cnn(model, train_x, train_y, num_epochs=15, lr=5e-4):
+   class_counts = np.bincount(train_y.numpy())
+   class_weights = 1.0 / (class_counts + 1e-6)
+   class_weights = class_weights / np.sum(class_weights)
+
+   criterion = nn.CrossEntropyLoss(
+      weight=torch.tensor(class_weights, dtype=torch.float32)
+   )
+   optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+   dataset = TensorDataset(train_x, train_y)
+   loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+   for epoch in range(num_epochs):
+      model.train()
+      epoch_loss = 0.0
+      for batch_x, batch_y in loader:
+         optimizer.zero_grad()
+         outputs = model(batch_x)
+         loss = criterion(outputs, batch_y)
+         loss.backward()
+         optimizer.step()
+         epoch_loss += loss.item()
+
+      print(f"[FineTune] Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+
+   return model
 
 def train_cnn_on_d1(train_x, train_y, window_size=200, num_epochs=100):
    """
@@ -617,20 +654,33 @@ if __name__ == "__main__":
    window_post = 100
 
    # --------------------------------------------------------------
-   # 1) Build training set on *clean* D1 and train CNN
+   # 1) Train one CNN per dataset noise profile (from scratch)
    # --------------------------------------------------------------
-   train_x, train_y = build_d1_training_set(
-      data_clean, GT_idx, GT_cls,
-      Fs=Fs, window_pre=window_pre, window_post=window_post
-   )
+   models = {}
+   window_size = window_pre + window_post
 
-   print(f"Training set: {train_x.shape[0]} spikes, "
-         f"{train_x.shape[2]} samples per channel")
+   for ds in ["D1", "D2", "D3", "D4", "D5", "D6"]:
+      print("\n" + "-" * 60)
+      print(f"Training CNN from scratch for {ds} noise profile")
+      print("-" * 60)
 
-   model = train_cnn_on_d1(train_x, train_y,
-                           window_size=window_pre + window_post,
-                           num_epochs=50)
+      # For D1 we don't force a noise profile (clean); otherwise force dataset noise
+      fixed_profile = None if ds == "D1" else ds
 
+      train_x, train_y = build_d1_training_set(
+         data_clean, GT_idx, GT_cls,
+         Fs=Fs, window_pre=window_pre, window_post=window_post,
+         fixed_noise_profile=fixed_profile
+      )
+
+      print(f"[{ds}] Training set: {train_x.shape[0]} spikes, "
+            f"{train_x.shape[2]} samples per channel")
+
+      models[ds] = train_cnn_on_d1(
+         train_x, train_y,
+         window_size=window_size,
+         num_epochs=50
+      )
    # --------------------------------------------------------------
    # 2) Build templates and amp_norm from clean D1
    # --------------------------------------------------------------
@@ -657,7 +707,7 @@ if __name__ == "__main__":
       _ = run_full_pipeline_on_data(
          data_noisy,
          ds_label=ds_label,
-         model=model,
+         model=models[ds_label],
          GT_idx=GT_idx,
          GT_cls=GT_cls,
          templates=templates,
